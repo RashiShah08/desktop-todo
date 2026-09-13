@@ -38,6 +38,10 @@ if sys.platform == "win32":
         hwnd = _resolve_hwnd(title)
         return bool(hwnd and _impl.set_window_icon(hwnd, icon_path))
 
+    def hide_from_taskbar(title: str) -> bool:
+        hwnd = _resolve_hwnd(title)
+        return bool(hwnd and _impl.hide_from_taskbar(hwnd))
+
 # ── macOS ───────────────────────────────────────────────────────────
 elif sys.platform == "darwin":
     import macos_integration as _impl
@@ -54,8 +58,13 @@ elif sys.platform == "darwin":
         # On macOS the icon is per-application, not per-window — set once.
         return _impl.set_app_icon(icon_path)
 
+    def hide_from_taskbar(title: str) -> bool:
+        # Closest macOS analogue: accessory mode drops the Dock tile + cmd-tab.
+        return _impl.set_accessory_mode()
+
 # ── Linux / fallback ───────────────────────────────────────────────
 else:
     def set_app_user_model_id(aumid: str) -> bool: return False
     def exclude_from_capture(title: str) -> bool: return False
     def set_window_icon(title: str, icon_path: str) -> bool: return False
+    def hide_from_taskbar(title: str) -> bool: return False

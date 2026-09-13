@@ -487,10 +487,10 @@ function renderTaskForm() {
   f.appendChild(head);
 
   // ── TASK
-  f.appendChild(formSection("TASK", () => {
+  f.appendChild(formSection("", () => {
     const wrap = document.createElement("div");
     const input = document.createElement("input");
-    input.className = "form-input";
+    input.className = "form-input form-input-hero";
     input.placeholder = "What needs doing?";
     input.value = state.form.name;
     input.addEventListener("input", (e) => state.form.name = e.target.value);
@@ -534,9 +534,6 @@ function renderTaskForm() {
       v => { state.form.priority = v; renderForm(); },
     );
   }));
-
-  // ── WITH (attendees)
-  f.appendChild(formSection("WITH", () => renderAttendeesSection()));
 
   // ── DUE — custom date + time picker buttons
   f.appendChild(formSection("DUE DATE & TIME", () => {
@@ -735,6 +732,9 @@ function renderTaskForm() {
     return wrap;
   }));
 
+  // ── WITH (attendees) — sits below the essentials; it's the least-used field
+  f.appendChild(formSection("WITH", () => renderAttendeesSection()));
+
   // Subtasks (edit mode only — we need a saved task id to attach them)
   if (isEdit) {
     f.appendChild(renderSubtaskSection());
@@ -764,10 +764,12 @@ function renderTaskForm() {
 function formSection(caption, builder) {
   const sec = document.createElement("div");
   sec.className = "form-section";
-  const lbl = document.createElement("div");
-  lbl.className = "form-caption";
-  lbl.textContent = caption;
-  sec.appendChild(lbl);
+  if (caption) {
+    const lbl = document.createElement("div");
+    lbl.className = "form-caption";
+    lbl.textContent = caption;
+    sec.appendChild(lbl);
+  }
   sec.appendChild(builder());
   return sec;
 }
@@ -862,7 +864,7 @@ function pickerButton(label, extraClass, onClick) {
   b.className = "picker-btn " + (extraClass || "");
   // Pick the right glyph automatically from the variant class.
   const isTime = (extraClass || "").includes("time");
-  const icon = isTime ? "⏰" : "📅";
+  const icon = isTime ? ICON.clock : ICON.calendar;
   b.innerHTML = `<span class="picker-icon">${icon}</span><span class="picker-label">${escapeHtml(label)}</span>`;
   b.addEventListener("click", (e) => { e.preventDefault(); onClick(); });
   return b;
@@ -908,6 +910,8 @@ const FOCUS_PRESETS = [
 
 function openFocusPicker(task) {
   let chosenMinutes = 25;
+  let customMode = false;
+
   openOverlay((close) => {
     const root = document.createElement("div");
     root.className = "picker-card";
@@ -917,42 +921,76 @@ function openFocusPicker(task) {
     head.innerHTML = `<span class="picker-time-display">Focus on “${escapeHtml(task.name)}”</span>`;
     root.appendChild(head);
 
-    const chips = chipRow(
-      FOCUS_PRESETS.map(p => ({
-        value: p.value, label: p.label,
-        fg: "#D4845A", bg: "rgba(212,132,90,0.14)",
-      })),
-      chosenMinutes,
-      v => {
-        if (v === -1) {
-          const custom = prompt("Focus for how many minutes?", "20");
-          const n = parseInt(custom, 10);
-          if (!n || n <= 0) return;
-          chosenMinutes = Math.min(n, 600);
-        } else {
-          chosenMinutes = v;
-        }
-        rebuildActions();
-      },
-    );
-    root.appendChild(chips);
+    const body = document.createElement("div");
+    root.appendChild(body);
 
-    const acts = document.createElement("div");
-    acts.className = "picker-actions";
-    root.appendChild(acts);
+    function startNow() {
+      if (!(chosenMinutes > 0)) return;
+      close();
+      startFocusSession(task, chosenMinutes);
+    }
 
-    function rebuildActions() {
+    function syncStartLabel() {
+      const btn = body.querySelector('[data-act="start"]');
+      if (btn) btn.textContent = `start ${chosenMinutes}m`;
+    }
+
+    function rebuild() {
+      body.innerHTML = "";
+
+      body.appendChild(chipRow(
+        FOCUS_PRESETS.map(p => ({
+          value: p.value, label: p.label,
+          fg: "#D4845A", bg: "rgba(212,132,90,0.14)",
+        })),
+        customMode ? -1 : chosenMinutes,
+        v => {
+          customMode = (v === -1);
+          if (!customMode) chosenMinutes = v;
+          rebuild();
+        },
+      ));
+
+      // Custom duration is an inline field, never a native prompt() — a
+      // system dialog in a webview is labelled with the page origin, which
+      // looks broken inside a styled app.
+      if (customMode) {
+        const row = document.createElement("div");
+        row.className = "focus-custom-row";
+        const input = document.createElement("input");
+        input.type = "number";
+        input.className = "form-input focus-custom-input";
+        input.min = "1";
+        input.max = "600";
+        input.value = String(chosenMinutes);
+        input.addEventListener("input", () => {
+          const n = parseInt(input.value, 10);
+          chosenMinutes = (n > 0) ? Math.min(n, 600) : 0;
+          syncStartLabel();
+        });
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); startNow(); }
+        });
+        row.appendChild(input);
+        const unit = document.createElement("span");
+        unit.className = "focus-custom-unit";
+        unit.textContent = "minutes";
+        row.appendChild(unit);
+        body.appendChild(row);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+      }
+
+      const acts = document.createElement("div");
+      acts.className = "picker-actions";
       acts.innerHTML = `
         <button class="picker-act-secondary" data-act="cancel">cancel</button>
         <button class="picker-act-primary" data-act="start">start ${chosenMinutes}m</button>`;
       acts.querySelector('[data-act="cancel"]').addEventListener("click", close);
-      acts.querySelector('[data-act="start"]').addEventListener("click", () => {
-        close();
-        startFocusSession(task, chosenMinutes);
-      });
+      acts.querySelector('[data-act="start"]').addEventListener("click", startNow);
+      body.appendChild(acts);
     }
-    rebuildActions();
 
+    rebuild();
     return root;
   });
 }
@@ -2171,6 +2209,40 @@ document.getElementById("focus-indicator").addEventListener("click", () => {
 document.getElementById("action-settings").addEventListener("click", () => {
   openSettings();
 });
+// Minimize hides the window outright rather than calling a native minimize:
+// with no taskbar button, Windows parks a minimized tool window as a stub in
+// the bottom-left corner of the screen. Restore from the tray or Ctrl+Shift+T.
+document.getElementById("win-min").addEventListener("click", () => pyHideToTray());
+document.getElementById("win-close").addEventListener("click", () => pyHideToTray());
+
+// Frameless windows have no native resize border, so the corner grip drives
+// window.resize() through the bridge. Throttled to one call per frame —
+// firing on every mousemove floods the JS↔Python bridge and stutters.
+(function initResizeGrip() {
+  const grip = document.getElementById("resize-grip");
+  if (!grip) return;
+  let dragging = false, startX = 0, startY = 0, startW = 0, startH = 0, queued = false;
+  let pendingW = 0, pendingH = 0;
+
+  grip.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    startX = e.screenX; startY = e.screenY;
+    startW = window.innerWidth; startH = window.innerHeight;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    pendingW = Math.max(280, startW + (e.screenX - startX));
+    pendingH = Math.max(320, startH + (e.screenY - startY));
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      safeCall("resize_window", pendingW, pendingH);
+    });
+  });
+  window.addEventListener("mouseup", () => { dragging = false; });
+})();
 // (Title bar buttons removed — using native Windows chrome now)
 
 // ─── Bridge to Python ───────────────────────────────────────

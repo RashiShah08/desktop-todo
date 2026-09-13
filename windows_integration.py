@@ -63,6 +63,10 @@ SWP_SHOWWINDOW = 0x0040
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_NOACTIVATE = 0x08000000
+WS_EX_APPWINDOW = 0x00040000
+
+SW_HIDE = 0
+SW_SHOWNA = 8      # show without stealing focus
 
 # WDA_EXCLUDEFROMCAPTURE = 0x11 (Windows 10 2004+). 0x1 is older WDA_MONITOR
 # which makes the window black on capture; 0x11 makes it fully invisible.
@@ -178,6 +182,39 @@ def include_in_capture(hwnd: int) -> bool:
                                                  wintypes.DWORD(WDA_NONE))
         return bool(result)
     except (AttributeError, OSError):
+        return False
+
+
+def hide_from_taskbar(hwnd: int) -> bool:
+    """Drop the window's taskbar button (and its Alt-Tab entry) by making it a
+    tool window — the standard trick for desktop widgets that live in the tray.
+
+    Windows only picks up an WS_EX_TOOLWINDOW change reliably while the window
+    is hidden, so the restyle is wrapped in a hide/show cycle. SW_SHOWNA brings
+    it back without stealing focus from whatever the user is doing."""
+    if not IS_WINDOWS or not hwnd:
+        return False
+    try:
+        # GetWindowLongPtrW only exists in 64-bit user32; 32-bit uses the
+        # non-Ptr variant. Pick whichever this interpreter actually has.
+        get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
+        set_long = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+        get_long.restype = ctypes.c_ssize_t
+        get_long.argtypes = [wintypes.HWND, ctypes.c_int]
+        set_long.restype = ctypes.c_ssize_t
+        set_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+
+        h = wintypes.HWND(hwnd)
+        style = get_long(h, GWL_EXSTYLE)
+        new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+        if new_style == style:
+            return True
+        user32.ShowWindow(h, SW_HIDE)
+        set_long(h, GWL_EXSTYLE, new_style)
+        user32.ShowWindow(h, SW_SHOWNA)
+        return True
+    except Exception as e:
+        print(f"[win] hide_from_taskbar failed: {e}", file=sys.stderr)
         return False
 
 

@@ -93,6 +93,21 @@ def include_in_capture_by_title(title: str) -> bool:
         return False
 
 
+def set_accessory_mode() -> bool:
+    """Drop the Dock tile and cmd-tab entry (NSApplicationActivationPolicyAccessory
+    = 1) — the macOS counterpart of a Windows tool window, for an app that should
+    live only in the menu bar / tray."""
+    appkit = _load_appkit()
+    if appkit is None:
+        return False
+    try:
+        app = appkit.NSApplication.sharedApplication()
+        return bool(app.setActivationPolicy_(1))
+    except Exception as e:
+        print(f"[mac] setActivationPolicy failed: {e}", file=sys.stderr)
+        return False
+
+
 def set_app_icon(icon_path: str) -> bool:
     """Replace the running app's dock + cmd-tab icon. On macOS this is a
     PROCESS-LEVEL setting, not per-window — one call updates everything.

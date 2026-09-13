@@ -16,7 +16,26 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
+
+
+def _log(msg: str) -> None:
+    """Write diagnostics next to the exe.
+
+    The packaged build is compiled with console=False, so stdout/stderr vanish
+    and runtime failures are invisible — which is how a drag bug that threw 28
+    exceptions per attempt went unnoticed. This gives the frozen app somewhere
+    to record what actually happened."""
+    line = f"{time.strftime('%H:%M:%S')}  {msg}"
+    print(f"[widget] {msg}", file=sys.stderr)
+    try:
+        base = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) \
+            else Path(__file__).resolve().parent
+        with open(base / "checkera-debug.log", "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
 
 import webview
 
@@ -26,8 +45,10 @@ import webview
 try:
     import webview.window as _ww
     _orig_move = _ww.Window.move
+
     def _safe_move(self, x, y):
         return _orig_move(self, int(x), int(y))
+
     _ww.Window.move = _safe_move
     _orig_resize = _ww.Window.resize
     def _safe_resize(self, w, h, *a, **kw):
@@ -35,6 +56,42 @@ try:
     _ww.Window.resize = _safe_resize
 except Exception:
     pass
+
+def _patch_winforms_move() -> None:
+    """Fix window dragging, which is broken in pywebview 6.2.1 on Windows.
+
+    BrowserView.move (winforms.py:620-644) calls SetWindowPos passing None for
+    the cx/cy arguments. SWP_NOSIZE means Windows ignores those values, but
+    ctypes still has to marshal them as integers, so every call raises
+    ArgumentError before reaching Win32 — 28 tracebacks per drag attempt, and
+    the window never moves.
+
+    The target is BrowserView.BrowserForm, the nested Form subclass — NOT
+    BrowserView itself, which has no move() at all. The drag bridge dispatches
+    winforms.move(x, y, uid) -> BrowserView.instances[uid].move(), and those
+    instances are BrowserForm objects, so patching the outer class silently
+    does nothing (it just adds an attribute nobody calls)."""
+    try:
+        import ctypes
+        import webview.platforms.winforms as _wf
+
+        def _fixed_move(self, x, y):
+            scale = getattr(self, "_scale", 1) or 1
+            SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW = 0x0001, 0x0004, 0x0040
+            ctypes.windll.user32.SetWindowPos(
+                self.Handle.ToInt32(), None,
+                int(x * scale), int(y * scale),
+                0, 0,                      # ignored under SWP_NOSIZE, but must be ints
+                SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW,
+            )
+
+        if not hasattr(_wf.BrowserView, "BrowserForm"):
+            raise AttributeError("BrowserView.BrowserForm missing — pywebview layout changed")
+        _wf.BrowserView.BrowserForm.move = _fixed_move
+        _log("winforms BrowserForm.move patched OK")
+    except Exception as e:
+        _log(f"winforms move patch FAILED: {e}")
+
 
 from data import TodoStore
 from api import Api
@@ -54,13 +111,29 @@ APP_ICON_PATH = RESOURCE_ROOT / "assets" / "checkera.ico"
 
 
 def main():
-    # 0. Identify ourselves to Windows as "checkera" so the taskbar doesn't
+    # 0. Repair pywebview's broken window-move before any window exists —
+    # without this, dragging the frameless window raises on every mousemove.
+    _patch_winforms_move()
+
+    # 0b. Identify ourselves to Windows as "checkera" so the taskbar doesn't
     # group us under python.exe and use the Python icon. Must happen BEFORE
     # the first webview window is created.
     try:
         winapi.set_app_user_model_id("checkera")
     except Exception as e:
         print(f"[widget] AUMID set failed: {e}", file=sys.stderr)
+
+    # 0c. Record whether the Google SDK actually imports in THIS build. The
+    # packaged app has no console, so an import failure would otherwise surface
+    # only as a misleading "SDK not installed" message in the UI.
+    try:
+        import gcal as _gcal
+        if _gcal.is_library_available():
+            _log("gcal SDK import OK")
+        else:
+            _log(f"gcal SDK IMPORT FAILED -> {getattr(_gcal, 'IMPORT_ERROR', 'unknown')}")
+    except Exception as e:
+        _log(f"gcal module itself failed to load: {type(e).__name__}: {e}")
 
     # 1. Backend
     store = TodoStore(DATA_FILE)
@@ -110,7 +183,9 @@ def main():
         min_size=(280, 320),
         resizable=True,
         on_top=True,
-        frameless=False,           # native Windows chrome — drag/min/close work for free
+        frameless=True,            # no OS title bar — the header draws its own controls
+        easy_drag=False,           # drag only via .pywebview-drag-region, so header
+                                   # buttons and the task list stay clickable
         background_color="#1D1B18",
     )
     api.set_window(window)
@@ -126,6 +201,11 @@ def main():
 
     # 3. After webview is ready: tray, hotkeys, reminders, screen-capture exclusion
     def _on_loaded():
+        # Taskbar hiding is deferred to a worker — see _settle_window_chrome for
+        # why doing it here doesn't stick. The icon/capture calls below still run
+        # now so the icon appears promptly; the worker re-applies them after.
+        threading.Thread(target=_settle_window_chrome, args=(window,),
+                         daemon=True).start()
         try:
             # Both calls go through the cross-platform shim. On Windows it
             # resolves hwnd via FindWindowW; on Mac it walks NSApp.windows()
@@ -179,6 +259,60 @@ def main():
     hotkeys.unregister_all()
     scheduler.stop()
     tray.stop()
+
+
+def _hide_taskbar_button(win) -> None:
+    """Keep Checkera out of the taskbar (and Alt-Tab) so it lives only in the tray.
+
+    A raw SetWindowLong(WS_EX_TOOLWINDOW) does NOT survive here: pywebview hosts
+    the window in a WinForms Form, and WinForms recomputes CreateParams from its
+    own ShowInTaskbar property every time it rebuilds the handle, restoring
+    WS_EX_APPWINDOW and undoing the edit. Setting the property is the only thing
+    that sticks. WinForms property access must happen on the UI thread, so this
+    uses the same InvokeRequired/Invoke dance pywebview uses internally."""
+    native = getattr(win, "native", None)
+    if native is not None:
+        def _apply():
+            native.ShowInTaskbar = False
+
+        try:
+            if getattr(native, "InvokeRequired", False):
+                from System import Func, Type
+                native.Invoke(Func[Type](_apply))
+            else:
+                _apply()
+        except Exception as e:
+            print(f"[win] ShowInTaskbar failed: {e}", file=sys.stderr)
+
+    # Belt and braces — the Win32 tool-window style also keeps it out of
+    # Alt-Tab, and covers any non-WinForms backend.
+    try:
+        winapi.hide_from_taskbar("Checkera")
+    except Exception as e:
+        print(f"[win] hide_from_taskbar failed: {e}", file=sys.stderr)
+
+
+def _settle_window_chrome(win) -> None:
+    """Drop the taskbar button once WinForms has finished building the window.
+
+    Doing this in the loaded callback does NOT work: WinForms is still showing
+    and sizing the window at that point and rebuilds the native handle straight
+    after, silently reverting the change (confirmed by probing the live window —
+    the flag came back every time). Waiting until it settles makes it stick, and
+    it's applied twice in case the first pass still lands too early.
+
+    Flipping ShowInTaskbar itself forces a handle rebuild, which drops anything
+    bound to the old HWND — so the icon and the screen-capture exclusion are
+    re-applied AFTER, never before."""
+    for delay in (2.0, 3.0):
+        time.sleep(delay)
+        _hide_taskbar_button(win)
+        try:
+            if APP_ICON_PATH.exists():
+                winapi.set_window_icon("Checkera", str(APP_ICON_PATH))
+            winapi.exclude_from_capture("Checkera")
+        except Exception as e:
+            print(f"[win] icon / capture re-apply failed: {e}", file=sys.stderr)
 
 
 def _open_quick_add(api, screen_w: int, screen_h: int) -> None:

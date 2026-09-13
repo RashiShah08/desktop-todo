@@ -418,6 +418,13 @@ class Api:
             try: self._window.show()
             except Exception: pass
 
+    def resize_window(self, width: int, height: int) -> None:
+        """Used by the frontend's resize grip — a frameless window has no
+        native resize border, so the corner grip drives this instead."""
+        if self._window:
+            try: self._window.resize(int(width), int(height))
+            except Exception: pass
+
     def open_url(self, url: str) -> None:
         try:
             webbrowser.open_new_tab(url)

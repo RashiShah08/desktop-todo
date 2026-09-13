@@ -55,11 +55,18 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # Big libs we definitely don't use — keep the bundle slim
+    # Big libs we definitely don't use — keep the bundle slim.
+    # NOTE: 'unittest' must NOT be excluded. Something in the Google Calendar
+    # SDK import chain imports it at import time, so excluding it made
+    # `from google.oauth2.credentials import Credentials` raise
+    # ModuleNotFoundError inside the frozen app. gcal.py catches ImportError
+    # and reports "SDK not installed", which looked like a missing dependency
+    # but was actually this exclusion. Calendar was broken in every packaged
+    # build because of it, while working fine from source.
     excludes=[
         'tkinter', 'matplotlib', 'numpy', 'pandas',
         'PySide2', 'PyQt5', 'PyQt6',
-        'pytest', 'unittest',
+        'pytest',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

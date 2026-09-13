@@ -33,8 +33,12 @@ try:
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     HAS_GCAL = True
-except ImportError:
+    IMPORT_ERROR = None
+except ImportError as e:
     HAS_GCAL = False
+    # Keep the reason: when frozen there's no console, so a bare False here
+    # is indistinguishable from "not installed" and impossible to diagnose.
+    IMPORT_ERROR = f"{type(e).__name__}: {e}"
     HttpError = Exception   # placeholder so type refs don't break
 
 

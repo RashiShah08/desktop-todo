@@ -1,9 +1,13 @@
 /* ─────────────────────────────────────────────────────────────
-   Design tokens — dark warm terracotta, exactly matching the
-   Figma design. Don't change without checking the export.
+   Design tokens — dark warm terracotta base (from the original
+   Figma export), extended with a "warm editorial" identity pass:
+   a serif display font (Fraunces) for headers/titles/task names,
+   DM Sans kept for all UI chrome (buttons, inputs, metadata) so
+   the app stays easy to scan.
 ─────────────────────────────────────────────────────────── */
 
 :root {
+  --font-display: 'Fraunces', Georgia, serif;
   --bg:               #1D1B18;
   --bg-title:         #131210;
   --bg-hover:         #222018;
@@ -87,7 +91,10 @@ button {
   padding: 0 10px 0 13px;
 }
 
-.header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* flex:1 so the title block soaks up all free header space — the whole strip
+   left of the buttons becomes a grab handle. Without this it is content-width
+   (~87px) and the drag target shrinks to ~24px on a narrow window. */
+.header-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 auto; align-self: stretch; }
 
 .brand-badge {
   width: 20px; height: 20px;
@@ -99,10 +106,12 @@ button {
 }
 
 #view-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 16px;
+  font-weight: 500;
   color: var(--text);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
 }
 
 .count-badge {
@@ -116,6 +125,15 @@ button {
 }
 
 .header-actions { display: flex; gap: 4px; align-items: center; }
+
+/* Secondary grab handle between title and buttons. */
+.header-drag {
+  flex: 0 1 auto;
+  align-self: stretch;
+  min-width: 16px;
+  cursor: default;
+}
+
 .hidden { display: none !important; }
 
 .action-btn {
@@ -215,9 +233,11 @@ button {
 .bucket-header:hover { background: rgba(255, 255, 255, 0.02); }
 .bucket-chevron { display: flex; align-items: center; }
 .bucket-label {
-  font-size: 9.5px; font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12px; font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 .bucket-count {
   font-size: 9px; font-weight: 600;
@@ -255,8 +275,10 @@ button {
 .task-body { flex: 1; min-width: 0; }
 
 .task-name {
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
   margin: 0;
   word-break: break-word;
   color: var(--text);
@@ -466,6 +488,20 @@ button {
 }
 .focus-indicator:hover { background: var(--accent); color: #fff; }
 
+.focus-custom-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 2px 2px;
+}
+.focus-custom-input {
+  width: 84px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.focus-custom-unit {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .focus-session-card {
   display: flex; flex-direction: column; align-items: center;
   padding: 22px 16px 16px;
@@ -509,12 +545,42 @@ button {
 .action-settings { color: var(--text-secondary); }
 .action-settings:hover { background: rgba(255,255,255,0.06); color: var(--text); }
 
+/* ── Window controls (frameless — we draw these ourselves) ── */
+.action-done { color: var(--text-fainter); }
+.action-done:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+
+.win-btn {
+  width: 22px; height: 22px;
+  color: var(--text-fainter);
+}
+.win-btn:hover { background: rgba(255,255,255,0.07); color: var(--text); }
+.win-close:hover { background: rgba(196, 64, 64, 0.22); color: #E88; }
+
+/* The header title area is the drag handle; make that obvious on hover. */
+.pywebview-drag-region { cursor: default; }
+
+/* Frameless windows lose the native resize border — this replaces it. */
+#resize-grip {
+  position: fixed;
+  right: 0; bottom: 0;
+  width: 14px; height: 14px;
+  cursor: nwse-resize;
+  z-index: 60;
+  background:
+    linear-gradient(135deg, transparent 0 50%, rgba(255,255,255,0.18) 50% 60%,
+                    transparent 60% 70%, rgba(255,255,255,0.18) 70% 80%,
+                    transparent 80%);
+}
+#resize-grip:hover { background-color: rgba(212,132,90,0.12); }
+
 .settings-card {
   padding: 16px;
 }
 .settings-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 500;
   color: var(--text);
   margin-bottom: 12px;
 }
@@ -587,22 +653,25 @@ button {
   background: var(--accent-tint-hov);
 }
 .form-title {
-  font-size: 11px;
-  color: var(--text-faint);
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .form-section {
   padding: 8px 14px 4px;
 }
 .form-caption {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-fainter);
-  margin-bottom: 6px;
+  margin-bottom: 7px;
 }
 
 .form-input {
@@ -621,6 +690,27 @@ button {
 .form-input:focus {
   border-color: rgba(212, 132, 90, 0.5);
   background: #26221E;
+}
+
+/* The task name is the headline of the form — no box, no caption, just type. */
+.form-input-hero {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  padding: 4px 0 9px;
+}
+.form-input-hero:focus {
+  background: transparent;
+  border-color: transparent;
+  border-bottom-color: var(--accent);
+}
+.form-input-hero::placeholder {
+  color: var(--text-dim);
+  font-style: italic;
 }
 input[type="date"].form-input, input[type="time"].form-input {
   color-scheme: dark;
@@ -769,6 +859,7 @@ input[type="date"].form-input, input[type="time"].form-input {
 /* ── Subtasks (checklist inside edit form, progress pill in row) ── */
 .subtask-progress {
   display: inline-block;
+  font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1111,7 +1202,12 @@ input[type="date"].form-input, input[type="time"].form-input {
   border-color: rgba(212,132,90,0.4);
   background: #26221E;
 }
-.picker-icon { opacity: 0.7; font-size: 10px; }
+.picker-icon {
+  opacity: 0.8;
+  display: flex; align-items: center;
+  color: var(--accent);
+}
+.picker-icon svg { width: 11px; height: 11px; }
 .picker-label { flex: 1; color: var(--text-secondary); font-weight: 500; letter-spacing: 0.01em; }
 .picker-btn:hover .picker-label { color: var(--text); }
 
@@ -1151,9 +1247,11 @@ input[type="date"].form-input, input[type="time"].form-input {
   justify-content: center; padding: 12px 10px 6px;
 }
 .picker-title {
-  font-size: 12px; font-weight: 600;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px; font-weight: 500;
   color: var(--text);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 .picker-nav {
   width: 26px; height: 26px;
@@ -1377,8 +1475,10 @@ input[type="date"].form-input, input[type="time"].form-input {
 }
 .done-body { flex: 1; min-width: 0; }
 .done-name {
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
   margin: 0;
   word-break: break-word;
   color: rgba(255, 255, 255, 0.28);
@@ -1511,6 +1611,34 @@ input[type="date"].form-input, input[type="time"].form-input {
   border-color: rgba(212, 132, 90, 0.4);
   background: #26221E;
 }
+
+/* Themed scrollbar for notes. The task list hides its scrollbar entirely
+   (.scroll-area above), but in a long note you need to see where you are —
+   so this is a slim terracotta bar instead of the default grey Chromium one. */
+.notes-input {
+  scrollbar-width: thin;                                  /* Firefox */
+  scrollbar-color: rgba(212,132,90,0.45) transparent;
+}
+.notes-input::-webkit-scrollbar {
+  width: 8px;
+}
+.notes-input::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+.notes-input::-webkit-scrollbar-thumb {
+  background: rgba(212, 132, 90, 0.35);
+  border-radius: 8px;
+  /* Transparent border + background-clip keeps the thumb visually narrow
+     while leaving a comfortable grab area. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.notes-input::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 132, 90, 0.6);
+  background-clip: content-box;
+}
+.notes-input::-webkit-scrollbar-corner { background: transparent; }
 .notes-input::placeholder { color: var(--text-dim); }
 .notes-status {
   font-size: 9px;

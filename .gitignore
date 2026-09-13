@@ -13,6 +13,9 @@ cache/
 # Sensitive — never commit
 credentials.json
 
+# Runtime diagnostics written next to the app (widget.py::_log)
+checkera-debug.log
+
 # Python
 __pycache__/
 *.py[cod]
