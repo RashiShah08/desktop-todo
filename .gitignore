@@ -1,0 +1,32 @@
+# PyInstaller build outputs
+build/
+dist/
+*.spec.bak
+
+# Per-user data — NEVER commit
+data/todos.json
+data/*.bak
+token.json
+cache/
+.todos-*.tmp
+
+# Sensitive — never commit
+credentials.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,26 @@
+# Frontend: HTML/CSS in an embedded webview
+pywebview>=5.0
+
+# System tray + icon generation
+pystray>=0.19.5
+Pillow>=10.0.0
+
+# Phase 2 — desktop notifications (Windows only; macOS uses osascript)
+winotify>=1.1.0; sys_platform == "win32"
+
+# Phase 3 — global hotkeys (cross-platform) + Windows API helpers
+keyboard>=0.13.5
+pywin32>=306; sys_platform == "win32"
+
+# macOS Cocoa bindings — only installed on Mac
+pyobjc-core>=10.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+
+# Phase 4 — news
+feedparser>=6.0.10
+requests>=2.31.0
+
+# Phase 5 — Google Calendar
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-api-python-client>=2.100.0
